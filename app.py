@@ -4,89 +4,10 @@ from datetime import datetime
 from pymongo import MongoClient
 import urllib.parse
 
-# --- App Configuration ---
 st.set_page_config(page_title="MetOptix AI Health Assistant", layout="centered")
 
-# --- MongoDB Setup ---
-MONGO_USER = "SiyamSaran"
-MONGO_PASS = urllib.parse.quote_plus("siyamsaran123")
-MONGODB_URI = "mongodb+srv://SiyamSaran:siyamsaran123@medical-cluster.cd79qsd.mongodb.net/?retryWrites=true&w=majority&appName=medical-cluster"
-
-DB_NAME = "HospitalDB"
-COLLECTION_NAME = "patient_medical_history"
-
-# --- Connect to MongoDB ---
-try:
-    client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)
-    client.admin.command('ping')
-    db = client[DB_NAME]
-    collection = db[COLLECTION_NAME]
-    # st.success("✅ MongoDB Atlas connection successful!")
-except Exception as e:
-    st.error(f"❌ MongoDB Atlas connection failed: {e}")
-    st.stop()
-
-# --- Load Data ---
-def load_data():
-    try:
-        data = list(collection.find({}, {"_id": 0}))
-        df = pd.DataFrame(data)
-        required_columns = ["PatientID", "Name", "MobileNumber", "VisitDate", "MedicalStatus",
-                            "HealthIssues", "Prescription", "PrescriptionDays", "DoctorNotes", "Timestamp"]
-        for col in required_columns:
-            if col not in df.columns:
-                df[col] = None
-        if not df.empty:
-            df['VisitDate'] = pd.to_datetime(df['VisitDate'], errors='coerce')
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-        return df
-    except Exception as e:
-        st.error(f"⚠ Error loading data: {e}")
-        return pd.DataFrame(columns=["PatientID", "Name", "MobileNumber", "VisitDate", "MedicalStatus",
-                                     "HealthIssues", "Prescription", "PrescriptionDays", "DoctorNotes", "Timestamp"])
-
-
-# --- Save a New Record ---
-def save_patient_record(record):
-    try:
-        collection.insert_one(record)
-    except Exception as e:
-        st.error(f"Error saving to database: {e}")
-
-# --- Delete a Record ---
-def delete_patient_record(patient_id, visit_date):
-    try:
-        result = collection.delete_one({"PatientID": patient_id, "VisitDate": visit_date})
-        return result.deleted_count
-    except Exception as e:
-        st.error(f"Error deleting from database: {e}")
-        return 0
-
-# --- Validate Mobile Number ---
-def validate_mobile_number(mobile):
-    mobile = mobile.strip()
-    return len(mobile) == 10 and mobile.isdigit()
-
-
-# --- AI Summary Generator ---
-def generate_summary(patient_data):
-    name = patient_data.get('Name', 'Unknown')
-    status = patient_data.get('MedicalStatus', 'Unknown')
-    issues = patient_data.get('HealthIssues', 'Not specified')
-    prescription = patient_data.get('Prescription', 'None')
-    days = patient_data.get('PrescriptionDays', 'N/A')
-    notes = patient_data.get('DoctorNotes', 'No additional notes')
-    risk_symbol = {"Stable": "🟢", "Moderate": "🟠", "Critical": "🔴"}.get(status, "⚪")
-    return (
-        f"{risk_symbol} Summary for **{name}**\n\n"
-        f"**{name}** is currently in a **{status}** condition.\n\n"
-        f"🩺 Health Issues: **{issues}**\n"
-        f"💊 Prescription: **{prescription}** for **{days}** days\n"
-        f"📝 Doctor Notes: **{notes}**"
-    )
-
-# --- UI Styling ---
-st.markdown("""<style>
+st.markdown("""
+<style>
 [data-testid="stAppViewContainer"] {
     background: linear-gradient(to right, #e0d4f7, #ffffff);
 }
@@ -119,15 +40,108 @@ html, body, .block-container {
     background-color: #732d91;
     box-shadow: 0 0 20px #732d91;
 }
-</style>""", unsafe_allow_html=True)
+</style>
+""", unsafe_allow_html=True)
+
+# --- User Login ---
+def login():
+    st.markdown('<div class="title">🔐 Login to MetOptix</div>', unsafe_allow_html=True)
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        login_button = st.form_submit_button("Login")
+        if login_button:
+            if username == "admin" and password == "admin123":
+                st.session_state["authenticated"] = True
+                st.success("✅ Login successful")
+                st.rerun()
+            else:
+                st.error("❌ Invalid username or password")
+
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    login()
+    st.stop()
+
+# --- MongoDB Setup ---
+MONGO_USER = "SiyamSaran"
+MONGO_PASS = urllib.parse.quote_plus("siyamsaran123")
+MONGODB_URI = "mongodb+srv://SiyamSaran:siyamsaran123@medical-cluster.cd79qsd.mongodb.net/?retryWrites=true&w=majority&appName=medical-cluster"
+DB_NAME = "HospitalDB"
+COLLECTION_NAME = "patient_medical_history"
+
+try:
+    client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)
+    client.admin.command('ping')
+    db = client[DB_NAME]
+    collection = db[COLLECTION_NAME]
+except Exception as e:
+    st.error(f"❌ MongoDB Atlas connection failed: {e}")
+    st.stop()
+
+def load_data():
+    try:
+        data = list(collection.find({}, {"_id": 0}))
+        df = pd.DataFrame(data)
+        required_columns = ["PatientID", "Name", "MobileNumber", "VisitDate", "MedicalStatus",
+                            "HealthIssues", "Prescription", "PrescriptionDays", "DoctorNotes", "Timestamp"]
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = None
+        if not df.empty:
+            df['VisitDate'] = pd.to_datetime(df['VisitDate'], errors='coerce')
+            df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
+        return df
+    except Exception as e:
+        st.error(f"⚠ Error loading data: {e}")
+        return pd.DataFrame(columns=["PatientID", "Name", "MobileNumber", "VisitDate", "MedicalStatus",
+                                     "HealthIssues", "Prescription", "PrescriptionDays", "DoctorNotes", "Timestamp"])
+
+def save_patient_record(record):
+    try:
+        collection.insert_one(record)
+    except Exception as e:
+        st.error(f"Error saving to database: {e}")
+
+def delete_patient_record(patient_id, visit_date):
+    try:
+        result = collection.delete_one({"PatientID": patient_id, "VisitDate": visit_date})
+        return result.deleted_count
+    except Exception as e:
+        st.error(f"Error deleting from database: {e}")
+        return 0
+
+def validate_mobile_number(mobile):
+    mobile = mobile.strip()
+    return len(mobile) == 10 and mobile.isdigit()
+
+# --- AI Summary Generator with bullet list ---
+def generate_summary(patient_data):
+    name = patient_data.get('Name', 'Unknown')
+    status = patient_data.get('MedicalStatus', 'Unknown')
+    issues = patient_data.get('HealthIssues', 'Not specified')
+    prescription = patient_data.get('Prescription', 'None')
+    days = patient_data.get('PrescriptionDays', 'N/A')
+    notes = patient_data.get('DoctorNotes', 'No additional notes')
+    risk_symbol = {"Stable": "🟢", "Moderate": "🟠", "Critical": "🔴"}.get(status, "⚪")
+
+    issues_lines = "\n".join([f"- **{line.strip()}**" for line in issues.splitlines() if line.strip()])
+
+    return (
+        f"{risk_symbol} Summary for **{name}**\n\n"
+        f"**{name}** is currently in a **{status}** condition.\n\n"
+        f"🩺 Health Issues:\n{issues_lines}\n\n"
+        f"💊 Prescription: **{prescription}** for **{days}** days\n"
+        f"📝 Doctor Notes: **{notes}**"
+    )
 
 st.markdown('<div class="title">🧠 MetOptix: AI-Powered Medical Summarizer</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Smarter Healthcare Through Intelligent Patient Summaries</div>', unsafe_allow_html=True)
 
-# --- Main Data ---
 df = load_data()
 
-# --- Search or Register Section ---
 st.header("🔍 Search or Register Patient")
 col1, col2 = st.columns(2)
 with col1:
@@ -139,10 +153,8 @@ if name or mobile:
     patient_records = df.copy()
     if name and 'Name' in patient_records.columns:
         patient_records = patient_records[patient_records['Name'].str.lower().str.contains(name.lower())]
-
     if mobile and 'MobileNumber' in patient_records.columns:
         patient_records = patient_records[patient_records['MobileNumber'].astype(str).str.contains(mobile)]
-
 
     if not patient_records.empty:
         latest = patient_records.sort_values("VisitDate", ascending=False).iloc[0]
@@ -162,7 +174,12 @@ if name or mobile:
                 prescription_days = st.number_input("Prescription Days", 1, 365,
                                                     value=int(latest.get("PrescriptionDays", 7)))
             with col2:
-                issues = st.text_input("Health Issues", value=latest["HealthIssues"])
+                issues = st.text_area(
+                "Health Issues",
+                value=latest["HealthIssues"] if latest["HealthIssues"] else "",
+                placeholder="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10."
+                )
+
                 notes = st.text_area("Doctor Notes", value=latest["DoctorNotes"])
 
             if st.form_submit_button("💾 Save Update"):
@@ -200,7 +217,6 @@ if name or mobile:
         st.warning("Patient not found. Register below.")
         with st.form("register_form", clear_on_submit=True):
             st.subheader("➕ Register New Patient")
-            # Generate ordered PatientID like PT0001, PT0002, ...
             if df.empty:
                 next_id_num = 1
             else:
@@ -208,15 +224,10 @@ if name or mobile:
                 numeric_ids = [int(pid[2:]) for pid in last_ids if pid.startswith("PT") and pid[2:].isdigit()]
                 next_id_num = max(numeric_ids) + 1 if numeric_ids else 1
 
-            # Format with leading zeros (e.g., PT0001)
             patient_id = f"PT{next_id_num:04d}"
-
-
-
-
             visit_date = datetime.now()
             status = st.selectbox("Medical Status", ["Stable", "Moderate", "Critical"])
-            issues = st.text_input("Health Issues")
+            issues = st.text_area("Health Issues", placeholder=" ")
             prescription = st.text_area("Prescription")
             prescription_days = st.number_input("Prescription Days", 1, 365, value=2)
             notes = st.text_area("Doctor Notes")
@@ -243,7 +254,6 @@ if name or mobile:
                     st.success(f"✅ Registered {name} with ID {patient_id}")
                     st.session_state["rerun"] = True
 
-# --- Full Data View ---
 if st.checkbox("📋 Show Full Patient Database"):
     df = load_data()
     st.markdown("### 📁 All Patient Records")
